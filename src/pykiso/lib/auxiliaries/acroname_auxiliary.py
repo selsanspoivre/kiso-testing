@@ -19,12 +19,12 @@ Acroname Control Auxiliary
 
 """
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 import brainstem
 from brainstem.result import Result
 
-from pykiso.interfaces.dt_auxiliary import DTAuxiliaryInterface
+from pykiso import SimpleAuxiliaryInterface
 from pykiso.types import MsgType
 
 log = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ ERROR_MESSAGES = {
 }
 
 
-class AcronameAuxiliary(DTAuxiliaryInterface):
+class AcronameAuxiliary(SimpleAuxiliaryInterface):
     """Auxiliary used to control acroname usb hubs"""
 
     MICROVOLT_TO_UNIT = {
@@ -90,9 +90,7 @@ class AcronameAuxiliary(DTAuxiliaryInterface):
 
         :param serial_number: serial number to connect to as hex string. Example "0x66F4859B"
         """
-        super().__init__(
-            is_proxy_capable=False, tx_task_on=False, rx_task_on=False, **kwargs
-        )
+        super().__init__(**kwargs)
         self.serial_number = (
             int(serial_number, 16) if isinstance(serial_number, str) else serial_number
         )
@@ -104,16 +102,14 @@ class AcronameAuxiliary(DTAuxiliaryInterface):
         :return: True if successful
         """
 
-        log.internal_info("Create auxiliary instance")
+        log.info("Create auxiliary instance")
 
         result = self.stem.discoverAndConnect(
             brainstem.link.Spec.USB, self.serial_number
         )
         if result == (Result.NO_ERROR):
             result = self.stem.system.getSerialNumber()
-            log.internal_info(
-                "Connected to USBStem with serial number: 0x%08X" % result.value
-            )
+            log.info("Connected to USBStem with serial number: 0x%08X" % result.value)
         else:
             log.error("Could not connect to usb hub acroname")
             self.eval_result(result)
@@ -126,7 +122,7 @@ class AcronameAuxiliary(DTAuxiliaryInterface):
 
         :return: always True
         """
-        log.internal_info("Delete auxiliary instance")
+        log.info("Delete auxiliary instance")
         try:
             self.stem.disconnect()
         except Exception:
@@ -238,15 +234,3 @@ class AcronameAuxiliary(DTAuxiliaryInterface):
         result = self.stem.usb.setPortCurrentLimit(port, micro_volt_value)
         self.eval_result(result)
         return result
-
-    def _run_command(self, cmd_message: Any, cmd_data: Optional[bytes]) -> None:
-        """Not used.
-
-        Simply respect the interface.
-        """
-
-    def _receive_message(self, timeout_in_s: float) -> None:
-        """Not used.
-
-        Simply respect the interface.
-        """

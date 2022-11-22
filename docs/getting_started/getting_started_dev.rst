@@ -1,5 +1,5 @@
-How to setup my environment?
-----------------------------
+Contributor Setup
+-----------------
 
 
 Requirements

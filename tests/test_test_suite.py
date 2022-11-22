@@ -62,9 +62,9 @@ class IntegrationTestSuite(unittest.TestCase):
         -  no test case are skipped
         -  number of test run equal to 4
         """
-        self.init.prepare_default_test_suites(
-            IntegrationTestSuite.test_suite_directory, "*.py", 1
-        )
+        parameters = (IntegrationTestSuite.test_suite_directory, "*.py", 1, [], {})
+
+        self.init.prepare_default_test_suites(parameters)
         result = unittest.TextTestRunner().run(self.init.custom_test_suite)
 
         self.assertEqual(result.wasSuccessful(), False)
@@ -74,8 +74,8 @@ class IntegrationTestSuite(unittest.TestCase):
             result.failures[0][0].id(),
             "fake_suite_1.FakeTestCase-1-0.test_fake_2",
         )
-        self.assertEqual(len(result.skipped), 1)
-        self.assertEqual(result.testsRun, 2)
+        self.assertEqual(len(result.skipped), 0)
+        self.assertEqual(result.testsRun, 3)
 
 
 @pytest.mark.parametrize(

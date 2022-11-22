@@ -49,7 +49,6 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinxcontrib.programoutput",
     "sphinx_autodoc_typehints",
-    "sphinx.ext.autosectionlabel",
 ]
 
 source_suffix = {

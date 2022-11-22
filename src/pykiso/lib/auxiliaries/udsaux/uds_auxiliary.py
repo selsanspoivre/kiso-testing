@@ -19,16 +19,10 @@ uds_auxiliary
 
 """
 import logging
-import threading
-import time
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Iterator, List, Optional, Union
+from typing import List, Optional, Union
 
 import can
 from uds import IsoServices
-
-from pykiso.connector import CChannel
 
 from .common import uds_exceptions
 from .common.uds_base_auxiliary import UdsBaseAuxiliary
@@ -43,38 +37,6 @@ class UdsAuxiliary(UdsBaseAuxiliary):
     """Auxiliary used to handle the UDS protocol on client (tester) side."""
 
     errors = uds_exceptions
-
-    def __init__(
-        self,
-        com: CChannel,
-        config_ini_path: Optional[Union[Path, str]] = None,
-        odx_file_path: Optional[Union[Path, str]] = None,
-        request_id: Optional[int] = None,
-        response_id: Optional[int] = None,
-        tp_layer: dict = None,
-        uds_layer: dict = None,
-        **kwargs,
-    ):
-        """Initialize attributes.
-        :param com: communication channel connector.
-        :param config_ini_path: UDS parameter file.
-        :param odx_file_path: ecu diagnostic definition file.
-        :param request_id: optional CAN ID used for sending messages.
-        :param response_id: optional CAN ID used for receiving messages.
-        :param tp_layer: isotp configuration given at yaml level
-        :param uds_layer: uds configuration given at yaml level
-        """
-        self.is_tester_present = None
-        super().__init__(
-            com,
-            config_ini_path,
-            odx_file_path,
-            request_id,
-            response_id,
-            tp_layer,
-            uds_layer,
-            **kwargs,
-        )
 
     def transmit(self, data: bytes, req_id: int, extended: bool = False) -> None:
         """Transmit a message through ITF connector. This method is a
@@ -91,15 +53,11 @@ class UdsAuxiliary(UdsBaseAuxiliary):
         self,
         msg_to_send: Union[bytes, List[int], tuple],
         timeout_in_s: float = 6,
-        response_required: bool = True,
     ) -> Union[UdsResponse, bool]:
         """Send a UDS diagnostic request to the target ECU and check response.
 
         :param msg_to_send: can uds raw bytes to be sent
-        :param timeout_in_s: not used, actual timeout in seconds for the response can be
-            configured with the P2_CAN_Client parameter in the config.ini file
-            (default value is 5s)
-        :param response_required: Wait for a response if True
+        :param timeout_in_s: not used
 
         :raise ResponseNotReceivedError: raised when no answer has been received
         :raise Exception: raised when the raw message could not be send properly
@@ -109,30 +67,23 @@ class UdsAuxiliary(UdsBaseAuxiliary):
             False
         """
         try:
-            log.internal_info(
+            log.info(
                 f"UDS request to send '{['0x{:02X}'.format(i) for i in msg_to_send]}'"
             )
-            resp = self.uds_config.send(
-                msg_to_send,
-                responseRequired=response_required,
-                tpWaitTime=self.tp_waiting_time,
-            )
+            resp = self.uds_config.send(msg_to_send)
         except Exception:
             log.exception("Error while sending uds raw request")
             return False
 
         if resp is None:
-            if not response_required:
-                return True
-            else:
-                raise self.errors.ResponseNotReceivedError(msg_to_send)
+            raise self.errors.ResponseNotReceivedError(msg_to_send)
 
         resp_print = (
             f"UDS response received {['0x{:02X}'.format(i) for i in resp]}"
             if not isinstance(resp, bool)
             else resp
         )
-        log.internal_info(resp_print)
+        log.info(resp_print)
         resp = UdsResponse(resp)
         return resp
 
@@ -146,7 +97,7 @@ class UdsAuxiliary(UdsBaseAuxiliary):
         :return: True if response is positive
         """
         if resp.is_negative:
-            log.internal_info(f"Negative response with NRC: {resp.nrc.name}")
+            log.info(f"Negative response with NRC: {resp.nrc.name}")
             raise self.errors.UnexpectedResponseError(resp)
         return True
 
@@ -161,13 +112,11 @@ class UdsAuxiliary(UdsBaseAuxiliary):
         """
         if not resp.is_negative:
             raise self.errors.UnexpectedResponseError(resp)
-        log.internal_info(f"Negative response with :{resp.nrc.name}")
+        log.info(f"Negative response with :{resp.nrc.name}")
         return True
 
     def send_uds_config(
-        self,
-        msg_to_send: dict,
-        timeout_in_s: float = 6,
+        self, msg_to_send: dict, timeout_in_s: float = 6
     ) -> Union[dict, bool]:
         """Send UDS config to the target ECU.
 
@@ -188,7 +137,7 @@ class UdsAuxiliary(UdsBaseAuxiliary):
             req_resp_data = uds_service(**msg_to_send["data"])
             if req_resp_data is None:
                 req_resp_data = True
-            log.internal_info(f"UDS response received {req_resp_data}")
+            log.info(f"UDS response received {req_resp_data}")
             return req_resp_data
         except AttributeError:
             # Service not found, raised by getattr()
@@ -275,53 +224,6 @@ class UdsAuxiliary(UdsBaseAuxiliary):
             log.error("No uds config found")
             return
 
-    def _sender_run(self, period: int, stop_event: threading.Event) -> None:
-        """send tester present at defined period until stopped
-
-        :param period: period in seconds to use for the cyclic sending of tester present
-        :param stop_event: event to set to stop the sending of tester present
-        """
-        while not stop_event.is_set():
-            self.send_uds_raw(
-                UDSCommands.TesterPresent.TESTER_PRESENT_NO_RESPONSE,
-                response_required=False,
-            )
-            time.sleep(period)
-
-    @contextmanager
-    def tester_present_sender(self, period: int = 4) -> Iterator[None]:
-        """Context manager that continuously sends tester present messages via UDS
-
-        :param period: period in seconds to use for the cyclic sending of tester present
-        """
-        stop_event = threading.Event()
-        sender = threading.Thread(
-            name="TesterPresentSender",
-            target=self._sender_run,
-            args=(period, stop_event),
-        )
-        try:
-            yield sender.start()
-        finally:
-            stop_event.set()
-            sender.join()
-
-    def start_tester_present_sender(self, period: int = 4):
-        """Start to continuously send tester present messages via UDS"""
-        if not self.is_tester_present:
-            self.is_tester_present = self.tester_present_sender(period=period)
-            return self.is_tester_present.__enter__()
-
-    def stop_tester_present_sender(self):
-        """Stop to continuously send tester present messages via UDS"""
-        if self.is_tester_present:
-            self.is_tester_present.__exit__(None, None, None)
-            self.is_tester_present = None
-        else:
-            log.internal_warning(
-                "Tester present sender should be started before it can be stopped"
-            )
-
     def _receive_message(self, timeout_in_s: float) -> None:
         """This method is only used to populate the python-uds reception
         buffer. When a message is received, invoke python-uds configured
@@ -341,15 +243,10 @@ class UdsAuxiliary(UdsBaseAuxiliary):
             if arbitration_id == self.res_id:
                 self.uds_config.tp.callback_onReceive(can_msg)
 
-    def _run_command(self, cmd_message, cmd_data=None) -> Union[dict, bytes, bool]:
+    def _abort_command(self) -> None:
         """Not used."""
         pass
 
-    def _delete_auxiliary_instance(self) -> bool:
-        """Close current associated channel.
-
-        :return: always True
-        """
-        if self.is_tester_present:
-            self.stop_tester_present_sender()
-        return super()._delete_auxiliary_instance()
+    def _run_command(self, cmd_message, cmd_data=None) -> Union[dict, bytes, bool]:
+        """Not used."""
+        pass

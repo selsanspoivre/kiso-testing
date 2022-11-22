@@ -8,100 +8,132 @@
 # Robert Bosch GmbH.
 ##########################################################################
 
+import logging
+from unittest import mock
+from unittest.mock import MagicMock
+
 import pytest
 
 from pykiso.lib.auxiliaries.udsaux.common.uds_base_auxiliary import (
-    Config,
-    Uds,
     UdsBaseAuxiliary,
-    warnings,
+)
+from pykiso.lib.auxiliaries.udsaux.common.uds_response import (
+    NegativeResponseCode,
+    UdsResponse,
 )
 
 
-class TestUdsBaseAuxiliary:
-    @pytest.fixture
-    def aux_inst(self, mocker, cchannel_inst):
-        class MockUdsAuxiliary(UdsBaseAuxiliary):
-            def __init__(self, *arg, **kwargs):
-                config_ini_path = "just for fun"
-                super().__init__(cchannel_inst, config_ini_path, *arg, **kwargs)
+@pytest.fixture(scope="function")
+def uds_aux_common_mock(mocker):
+    mocker.patch(
+        "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.run",
+        return_value=None,
+    )
+    mocker.patch(
+        "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.create_instance",
+        return_value=None,
+    )
+    mocker.patch(
+        "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.delete_instance",
+        return_value=None,
+    )
+    mocker.patch(
+        "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.run_command",
+        return_value=None,
+    )
 
+
+class TestUdsAuxiliary:
+    uds_aux_instance_odx = None
+    uds_aux_instance_raw = None
+
+    @pytest.fixture(scope="function")
+    def uds_odx_aux_inst(
+        self, mocker, uds_aux_common_mock, ccpcan_inst, tmp_uds_config_ini
+    ):
+        class MockAux(UdsBaseAuxiliary):
             _run_command = mocker.stub(name="_run_command")
+            _abort_command = mocker.stub(name="_abort_command")
             _receive_message = mocker.stub(name="_receive_message")
-            transmit = mocker.stub(name="transmit")
-            receive = mocker.stub(name="receive")
 
-        mocker.patch.object(warnings, "warn")
-        return MockUdsAuxiliary()
-
-    def test_init_com_layers_default_values(self, aux_inst):
-        aux_inst.req_id = 0x123
-        aux_inst.res_id = 0x321
-
-        aux_inst._init_com_layers()
-        expected_tp = UdsBaseAuxiliary.DEFAULT_TP_CONFIG
-        expected_tp["req_id"] = aux_inst.req_id
-        expected_tp["res_id"] = aux_inst.res_id
-        assert aux_inst.uds_layer == UdsBaseAuxiliary.DEFAULT_UDS_CONFIG
-        assert aux_inst.tp_layer == expected_tp
-
-    def test_create_auxiliary_instance_without_odx(self, mocker, aux_inst):
-        mocker.patch(
-            "pathlib.Path.exists",
-            return_value=False,
+        TestUdsAuxiliary.uds_aux_instance_odx = MockAux(
+            ccpcan_inst, tmp_uds_config_ini, "odx"
         )
-        mock_init = mocker.patch.object(Uds, "__init__", return_value=None)
-        mock_transmit = mocker.patch.object(Uds, "overwrite_transmit_method")
-        mock_receive = mocker.patch.object(Uds, "overwrite_receive_method")
-        mock_config = mocker.patch.object(Config, "load_com_layer_config")
+        return TestUdsAuxiliary.uds_aux_instance_odx
 
-        verdict = aux_inst._create_auxiliary_instance()
+    @pytest.fixture(scope="function")
+    def uds_raw_aux_inst(
+        self, mocker, uds_aux_common_mock, ccpcan_inst, tmp_uds_config_ini
+    ):
+        class MockAux(UdsBaseAuxiliary):
+            _run_command = mocker.stub(name="_run_command")
+            _abort_command = mocker.stub(name="_abort_command")
+            _receive_message = mocker.stub(name="_receive_message")
 
-        aux_inst.channel._cc_open.assert_called_once()
-        mock_init.assert_called_once()
-        mock_config.assert_called_once()
-        mock_transmit.assert_called_with(aux_inst.transmit)
-        mock_receive.assert_called_with(aux_inst.receive)
-        assert aux_inst.uds_config_enable is False
-        assert verdict is True
+        TestUdsAuxiliary.uds_aux_instance_raw = MockAux(ccpcan_inst, tmp_uds_config_ini)
+        return TestUdsAuxiliary.uds_aux_instance_raw
 
-    def test_create_auxiliary_instance_with_odx(self, mocker, aux_inst):
-        mocker.patch(
-            "pathlib.Path.exists",
-            return_value=True,
+    def test_constructor_odx(self, uds_odx_aux_inst, tmp_uds_config_ini):
+        assert uds_odx_aux_inst.is_proxy_capable
+        assert str(uds_odx_aux_inst.odx_file_path) == "odx"
+        assert uds_odx_aux_inst.config_ini_path == tmp_uds_config_ini
+
+    def test_constructor_raw(self, uds_raw_aux_inst, tmp_uds_config_ini):
+        assert uds_raw_aux_inst.is_proxy_capable
+        assert uds_raw_aux_inst.odx_file_path is None
+        assert uds_raw_aux_inst.config_ini_path == tmp_uds_config_ini
+
+    @pytest.mark.parametrize(
+        "channel_name", ["CCPCanCan", "CCVectorCan", "CCSocketCan", "CCProxy"]
+    )
+    def test_create_auxiliary_instance_odx(
+        self, channel_name, mocker, uds_odx_aux_inst
+    ):
+
+        uds_mocker = mocker.patch(
+            "pykiso.lib.auxiliaries.udsaux.common.uds_base_auxiliary.createUdsConnection",
         )
-        mock_init = mocker.patch.object(Uds, "__init__", return_value=None)
-        mock_transmit = mocker.patch.object(Uds, "overwrite_transmit_method")
-        mock_receive = mocker.patch.object(Uds, "overwrite_receive_method")
-        mock_config = mocker.patch.object(Config, "load_com_layer_config")
-        aux_inst.odx_file_path = "something super cool"
+        uds_odx_aux_inst.receive = MagicMock()
+        uds_odx_aux_inst.transmit = MagicMock()
 
-        verdict = aux_inst._create_auxiliary_instance()
+        mocker.patch.object(uds_odx_aux_inst, "uds_config")
 
-        aux_inst.channel._cc_open.assert_called_once()
-        mock_init.assert_called_once()
-        mock_config.assert_called_once()
-        mock_transmit.assert_called_with(aux_inst.transmit)
-        mock_receive.assert_called_with(aux_inst.receive)
-        assert aux_inst.uds_config_enable is True
-        assert verdict is True
+        uds_odx_aux_inst.channel.__class__.__name__ = channel_name
+        uds_odx_aux_inst._create_auxiliary_instance()
 
-    def test_create_auxiliary_instance_error(self, mocker, aux_inst):
-        mocker.patch.object(Uds, "__init__", side_effect=ValueError)
+        uds_odx_aux_inst.uds_config.tp.overwrite_receive_method.assert_called_once()
+        uds_odx_aux_inst.uds_config.tp.overwrite_transmit_method.assert_called_once()
+        uds_mocker.assert_called_once()
+        assert uds_odx_aux_inst.uds_config is not None
+        assert uds_odx_aux_inst.uds_config_enable
 
-        verdict = aux_inst._create_auxiliary_instance()
+    @mock.patch("pykiso.lib.auxiliaries.udsaux.common.uds_base_auxiliary.Uds")
+    def test_create_auxiliary_instance_raw(self, uds_mocker, uds_raw_aux_inst):
+        uds_mocker.return_value = "UdsInstanceRaw"
 
-        assert verdict is False
+        uds_raw_aux_inst.channel.__class__.__name__ = "CCVectorCan"
+        uds_raw_aux_inst._create_auxiliary_instance()
 
-    def test_delete_auxiliary_instance(self, aux_inst):
-        verdict = aux_inst._delete_auxiliary_instance()
+        uds_mocker.assert_called_once()
+        assert uds_raw_aux_inst.uds_config == "UdsInstanceRaw"
+        assert not uds_raw_aux_inst.uds_config_enable
 
-        aux_inst.channel._cc_close.assert_called_once()
-        assert verdict is True
+    def test_create_auxiliary_instance_exception(self, mocker, uds_odx_aux_inst):
+        log_mock = mocker.patch(
+            "pykiso.lib.auxiliaries.udsaux.common.uds_base_auxiliary.log",
+            return_value=logging.getLogger(),
+        )
 
-    def test_delete_auxiliary_instance_error(self, mocker, aux_inst):
-        mocker.patch.object(aux_inst.channel, "_cc_close", side_effect=ValueError)
+        uds_odx_aux_inst._create_auxiliary_instance()
 
-        verdict = aux_inst._delete_auxiliary_instance()
+        log_mock.exception.assert_called_once()
 
-        assert verdict is False
+    def test_delete_auxiliary(self, mock_uds_config, uds_odx_aux_inst):
+        uds_odx_aux_inst.uds_config = mock_uds_config
+
+        uds_odx_aux_inst.channel.__class__.__name__ = "CCVectorCan"
+        uds_odx_aux_inst._create_auxiliary_instance()
+
+        uds_odx_aux_inst._delete_auxiliary_instance()
+
+        uds_odx_aux_inst.uds_config.disconnect.assert_called_once()

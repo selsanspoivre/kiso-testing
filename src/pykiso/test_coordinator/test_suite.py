@@ -20,21 +20,15 @@ gray test-suite for Message Protocol / TestApp usage.
 
 
 """
-from __future__ import annotations
 
 import logging
 import unittest
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Dict, List, Union
-from unittest.suite import _isnotsuite
+from typing import Callable, Dict, List, Union
 
 from .. import message
 from ..interfaces.thread_auxiliary import AuxiliaryInterface
 from .test_message_handler import test_app_interaction
-
-if TYPE_CHECKING:
-    from ..test_result.text_result import BannerTestResult
-    from .test_case import BasicTest
 
 __all__ = [
     "BaseTestSuite",
@@ -62,8 +56,8 @@ class BaseTestSuite(unittest.TestCase):
         teardown_timeout: Union[int, None],
         test_ids: Union[dict, None],
         tag: Union[Dict[str, List[str]], None],
-        *args: Any,
-        **kwargs: Any,
+        args: tuple,
+        kwargs: dict,
     ):
         """Initialize generic test-case.
 
@@ -89,7 +83,6 @@ class BaseTestSuite(unittest.TestCase):
         self.test_case_id = test_case_id
         self.test_ids = test_ids
         self.tag = tag
-        self.start_time = self.stop_time = self.elapsed_time = 0
 
     def cleanup_and_skip(self, aux: AuxiliaryInterface, info_to_print: str):
         """Cleanup auxiliary and log reasons.
@@ -101,7 +94,7 @@ class BaseTestSuite(unittest.TestCase):
         log.critical(info_to_print)
 
         # Send aborts to corresponding auxiliary
-        if aux.send_abort_command(timeout=10) is not True:
+        if aux.abort_command() is not True:
             log.critical(f"Error occurred during abort command on auxiliary {aux}")
 
         self.fail(info_to_print)
@@ -120,8 +113,8 @@ class BasicTestSuiteSetup(BaseTestSuite):
         teardown_timeout: Union[int, None],
         test_ids: Union[dict, None],
         tag: Union[Dict[str, List[str]], None],
-        *args: Any,
-        **kwargs: Any,
+        args: tuple,
+        kwargs: dict,
     ):
         """Initialize Message Protocol / TestApp test-case.
 
@@ -148,8 +141,8 @@ class BasicTestSuiteSetup(BaseTestSuite):
             teardown_timeout,
             test_ids,
             tag,
-            *args,
-            **kwargs,
+            args,
+            kwargs,
         )
         if any([setup_timeout, run_timeout, teardown_timeout]):
             log.warning(
@@ -174,8 +167,8 @@ class BasicTestSuiteTeardown(BaseTestSuite):
         teardown_timeout: Union[int, None],
         test_ids: Union[dict, None],
         tag: Union[Dict[str, List[str]], None],
-        *args: Any,
-        **kwargs: Any,
+        args: tuple,
+        kwargs: dict,
     ):
         """Initialize Message Protocol / TestApp test-case.
 
@@ -202,8 +195,8 @@ class BasicTestSuiteTeardown(BaseTestSuite):
             teardown_timeout,
             test_ids,
             tag,
-            *args,
-            **kwargs,
+            args,
+            kwargs,
         )
         if any([setup_timeout, run_timeout, teardown_timeout]):
             log.warning(
@@ -232,8 +225,8 @@ class RemoteTestSuiteSetup(BasicTestSuiteSetup):
         teardown_timeout: Union[int, None],
         test_ids: Union[dict, None],
         tag: Union[Dict[str, List[str]], None],
-        *args: Any,
-        **kwargs: Any,
+        args: tuple,
+        kwargs: dict,
     ):
         """Initialize Message Protocol / TestApp test-case.
 
@@ -260,8 +253,8 @@ class RemoteTestSuiteSetup(BasicTestSuiteSetup):
             teardown_timeout,
             test_ids,
             tag,
-            *args,
-            **kwargs,
+            args,
+            kwargs,
         )
         self.setup_timeout = setup_timeout or RemoteTestSuiteSetup.response_timeout
         self.run_timeout = run_timeout or RemoteTestSuiteSetup.response_timeout
@@ -294,8 +287,8 @@ class RemoteTestSuiteTeardown(BasicTestSuiteTeardown):
         teardown_timeout: Union[int, None],
         test_ids: Union[dict, None],
         tag: Union[Dict[str, List[str]], None],
-        *args: Any,
-        **kwargs: Any,
+        args: tuple,
+        kwargs: dict,
     ):
         """Initialize Message Protocol / TestApp test-case.
 
@@ -322,8 +315,8 @@ class RemoteTestSuiteTeardown(BasicTestSuiteTeardown):
             teardown_timeout,
             test_ids,
             tag,
-            *args,
-            **kwargs,
+            args,
+            kwargs,
         )
         self.setup_timeout = setup_timeout or RemoteTestSuiteTeardown.response_timeout
         self.run_timeout = run_timeout or RemoteTestSuiteTeardown.response_timeout
@@ -347,8 +340,8 @@ class BasicTestSuite(unittest.TestSuite):
         modules_to_add_dir: str,
         test_filter_pattern: str,
         test_suite_id: int,
-        *args: Any,
-        **kwargs: Any,
+        args: tuple,
+        kwargs: dict,
     ):
         """Initialize our custom unittest-test-suite.
 
@@ -371,74 +364,6 @@ class BasicTestSuite(unittest.TestSuite):
         # add sorted test case list to test suite
         self.addTests(test_case_list)
 
-        self.failed_suite_setups = set()
-
-    def check_suite_setup_failed(
-        self, test: BasicTest, result: BannerTestResult
-    ) -> None:
-        """Check if the suite setup has failed and store failed suite id.
-        Search in the global unittest result object, which save all the results
-        of the tests performed up to that point, for a BasicTestSuiteSetup tests
-        which has failed. If the suite setup has failed store the suite id.
-
-        :param test: test to check
-        :param result: unittest result object
-        """
-        if isinstance(test, BasicTestSuiteSetup):
-            for suite_type, _ in result.failures:
-                if isinstance(suite_type, BasicTestSuiteSetup):
-                    self.failed_suite_setups.add(test.test_suite_id)
-
-    def run(self, result: BannerTestResult, debug: bool = False) -> BannerTestResult:
-        """Override run method from unittest.suite.TestSuite.
-        Added functionality:
-        Skip suite tests if the parent test suite setup has failed.
-
-        :param result: unittest result storage
-        :param debug: True to enter debug mode, defaults to False
-        :return: test suite result
-        """
-        topLevel = False
-        if getattr(result, "_testRunEntered", False) is False:
-            result._testRunEntered = topLevel = True
-
-        for index, test in enumerate(self):
-            if result.shouldStop:  # pragma: no cover
-                break
-
-            if _isnotsuite(test):
-                self._tearDownPreviousClass(test, result)
-                self._handleModuleFixture(test, result)
-                self._handleClassSetUp(test, result)
-                result._previousTestClass = test.__class__
-
-                if getattr(test.__class__, "_classSetupFailed", False) or getattr(
-                    result, "_moduleSetUpFailed", False
-                ):  # pragma: no cover
-                    continue
-
-            if not debug:
-                if test.test_suite_id in self.failed_suite_setups:
-                    result.addSkip(
-                        test,
-                        f"Suite Setup failed for test suite {test.test_suite_id}",
-                    )
-                else:
-                    test(result)
-                    self.check_suite_setup_failed(test, result)
-
-            else:  # pragma: no cover
-                test.debug()
-
-            if self._cleanup:
-                self._removeTestAtIndex(index)
-
-        if topLevel:
-            self._tearDownPreviousClass(None, result)
-            self._handleModuleTearDown(result)
-            result._testRunEntered = False
-        return result
-
 
 def tc_sort_key(tc):
     """Sort-key for testcases.
@@ -450,16 +375,19 @@ def tc_sort_key(tc):
 
     :return: key for :py:func:`sorted`
 
-    :raises: any exception that occurs during test loading
+    :raise: any exception that occurs during test loading
     """
-    fix_ind = 0
-    if isinstance(tc, (BasicTestSuiteSetup, RemoteTestSuiteSetup)):
-        fix_ind = -1
-    elif isinstance(tc, (BasicTestSuiteTeardown, RemoteTestSuiteTeardown)):
-        fix_ind = 1
-    elif isinstance(tc, unittest.loader._FailedTest):
-        raise tc._exception
-    return (fix_ind, tc.test_suite_id, tc.test_case_id)
+    try:
+        fix_ind = 0
+        if isinstance(tc, (BasicTestSuiteSetup, RemoteTestSuiteSetup)):
+            fix_ind = -1
+        elif isinstance(tc, (BasicTestSuiteTeardown, RemoteTestSuiteTeardown)):
+            fix_ind = 1
+        elif isinstance(tc, unittest.loader._FailedTest):
+            raise tc._exception
+        return (fix_ind, tc.test_suite_id, tc.test_case_id)
+    except BaseException:
+        log.exception("Issue detected during test suite initialization!")
 
 
 def flatten(it):

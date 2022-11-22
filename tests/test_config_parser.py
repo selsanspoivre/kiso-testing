@@ -7,19 +7,14 @@
 # SPDX-License-Identifier: EPL-2.0
 ##########################################################################
 
-import io
 import logging
 import os
 from collections import namedtuple
 from pathlib import Path
-from textwrap import dedent
-from types import SimpleNamespace
 
 import pytest
-import yaml
 
-from pykiso.config_parser import YamlLoader, check_requirements, parse_config
-from pykiso.exceptions import ConnectorRequiredError
+from pykiso.config_parser import check_requirements, parse_config
 
 
 @pytest.fixture
@@ -130,15 +125,6 @@ def tmp_cfg_folder_conflict(tmp_path):
     return config_file
 
 
-@pytest.fixture
-def tmp_cfg_without_connector(tmp_path):
-    """Inherit folder structure from tmp_cfg."""
-    cfg_content = create_simple_config_without_connector()
-    config_file = tmp_path / "aux1.yaml"
-    config_file.write_text(cfg_content)
-    return config_file
-
-
 def create_simple_config():
     cfg = """
 auxiliaries:
@@ -152,16 +138,6 @@ connectors:
   chan1:
     config: null
     type: ext_lib/cc_example.py:CCExample
-    """
-    return cfg
-
-
-def create_simple_config_without_connector():
-    cfg = """
-auxiliaries:
-  aux1:
-    config: null
-    type: pykiso.lib.auxiliaries.example_test_auxiliary:ExampleAuxiliary
     """
     return cfg
 
@@ -339,35 +315,6 @@ def test_parse_config(tmp_cfg, tmp_path, mocker, caplog):
     )
 
 
-def test_parse_config_os_error_on_path(mocker, tmp_path):
-    config_dict = dedent(
-        """\
-        auxiliaries:
-          aux1:
-            config:
-              some_path: NOT/A/PATH
-        """
-    )
-    yaml_file = tmp_path / "my_config.yaml"
-    yaml_file.write_text(config_dict)
-
-    mock_is_key = mocker.patch.object(
-        YamlLoader, "is_key", side_effect=[True, True, True, True, False]
-    )
-    mock_resolve = mocker.patch.object(
-        Path, "resolve", side_effect=[yaml_file, OSError]
-    )
-
-    config_stream = io.StringIO(config_dict)
-    config_stream.name = "my_config"
-
-    cfg = yaml.load(yaml_file, Loader=YamlLoader)
-
-    assert mock_is_key.call_count == 5
-    assert mock_resolve.call_count == 2
-    assert cfg["auxiliaries"]["aux1"]["config"]["some_path"] == "NOT/A/PATH"
-
-
 def test_parse_config_env_var(tmp_cfg_env_var, mocker, tmp_path):
 
     mocker.patch.dict(
@@ -404,12 +351,6 @@ def test_parse_config_env_var(tmp_cfg_env_var, mocker, tmp_path):
             cfg["connectors"]["chan1"]["config"]["some_path_env_variable_not_set"]
             == "/examples/path2"
         )
-
-
-def test_parse_config_without_connector(tmp_cfg_without_connector):
-
-    cfg = parse_config(tmp_cfg_without_connector)
-    assert cfg["connectors"] == {}
 
 
 def test_parse_config_folder_name_eq_entity_name(tmp_cfg_mod):
