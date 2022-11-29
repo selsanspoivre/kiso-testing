@@ -24,6 +24,10 @@ from typing import List, Optional, Union
 import can
 from uds import IsoServices
 
+import contextlib
+import time
+import threading
+
 from .common import uds_exceptions
 from .common.uds_base_auxiliary import UdsBaseAuxiliary
 from .common.uds_request import UDSCommands
@@ -250,3 +254,36 @@ class UdsAuxiliary(UdsBaseAuxiliary):
     def _run_command(self, cmd_message, cmd_data=None) -> Union[dict, bytes, bool]:
         """Not used."""
         pass
+
+    def thread_function(self, event : threading.Event, period : int) :
+        """This is the target function for the thread allowing the transmisson
+        of a tester present command every 5 seconds
+        :event : threading event used to run the thread
+        :period : period of transmission of the messages"""
+
+        while not event.is_set() :
+            logging.info("Sending message")
+            UDS_response_object = self.send_uds_raw(0x3E)
+            logging.info("Received message :", repr(UDS_response_object))
+            time.sleep(period)
+            logging.info("Pausing transmission for 5 sec")
+
+    @contextlib.contextmanager
+    def tester_present_sender(self, period : int):
+        """This method is used to send the tester present service every 5 second to avoid process to go back to default sessions
+
+        :param period: number of seconds to repeat the operation.
+        """
+        event = threading.Event()
+        tester_service = threading.Thread(target=self.thread_function, args=(event,period))
+        try:
+            yield tester_service.start()
+        finally:
+            event.set()
+            tester_service.join()
+            logging.info("Ending thread")
+
+       
+
+
+
