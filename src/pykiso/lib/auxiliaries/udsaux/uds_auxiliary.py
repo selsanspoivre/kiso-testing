@@ -255,18 +255,19 @@ class UdsAuxiliary(UdsBaseAuxiliary):
         """Not used."""
         pass
 
-    def thread_function(self, event : threading.Event, period : int) :
-        """This is the target function for the thread allowing the transmisson
-        of a tester present command every 5 seconds
-        :event : threading event used to run the thread
-        :period : period of transmission of the messages"""
+    def thread_function(self, event : threading.Event, period : int) -> None:
+        """This is the target function for the thread allowing 
+        the transmisson of a tester present command 
 
+        :param event : threading event used to run the thread
+        :param period : period of transmission of the messages"""
+
+        tester_present_message=0x3E
         while not event.is_set() :
-            logging.info("Sending message")
-            UDS_response_object = self.send_uds_raw(0x3E)
-            logging.info("Received message :", repr(UDS_response_object))
+            UDS_response_object = self.send_uds_raw(tester_present_message)
+            print("my UDS message")
+            # logging.debug("Received message :", repr(UDS_response_object))
             time.sleep(period)
-            logging.info("Pausing transmission for 5 sec")
 
     @contextlib.contextmanager
     def tester_present_sender(self, period : int):
@@ -281,7 +282,7 @@ class UdsAuxiliary(UdsBaseAuxiliary):
         finally:
             event.set()
             tester_service.join()
-            logging.info("Ending thread")
+            logging.info("Stop sending Tester Present")
 
        
 

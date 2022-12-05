@@ -12,6 +12,9 @@ import logging
 from unittest import mock
 
 import pytest
+import threading
+import io
+import time
 
 from pykiso.lib.auxiliaries.udsaux.common.uds_response import (
     NegativeResponseCode,
@@ -317,3 +320,8 @@ class TestUdsAuxiliary:
 
         assert resp.is_negative is True
         assert resp.nrc == NegativeResponseCode.CONDITIONS_NOT_CORRECT
+
+    def test_tester_present_sender(self, uds_raw_aux_inst) :
+        with uds_raw_aux_inst.tester_present_sender(1) :
+            time.sleep(3.5)
+        assert uds_raw_aux_inst.send_uds_raw.call_count==3
