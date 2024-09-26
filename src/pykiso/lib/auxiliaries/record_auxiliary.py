@@ -18,7 +18,6 @@ Record Auxiliary
 .. currentmodule:: record_auxiliary
 
 """
-
 import io
 import logging
 import multiprocessing
@@ -27,14 +26,9 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from pykiso import CChannel
-from pykiso.interfaces.dt_auxiliary import (
-    DTAuxiliaryInterface,
-    close_connector,
-    open_connector,
-)
+from pykiso import CChannel, SimpleAuxiliaryInterface
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +62,7 @@ class StringIOHandler(io.StringIO):
             self.write(data)
 
 
-class RecordAuxiliary(DTAuxiliaryInterface):
+class RecordAuxiliary(SimpleAuxiliaryInterface):
     """Auxiliary used to record a connectors receive channel."""
 
     LOG_HEADER = "Received data :"
@@ -100,9 +94,8 @@ class RecordAuxiliary(DTAuxiliaryInterface):
         :param manual_start_record: flag to not start recording on
             auxiliary creation
         """
-        super().__init__(
-            is_proxy_capable=True, tx_task_on=False, rx_task_on=False, **kwargs
-        )
+        self.is_proxy_capable = True
+        super().__init__(**kwargs)
         self.channel = com
         self.is_active = is_active
         self.timeout = timeout
@@ -118,7 +111,7 @@ class RecordAuxiliary(DTAuxiliaryInterface):
             self.start_recording()
 
         if self.multiprocess:
-            log.internal_warning(
+            log.warning(
                 "Logs will only be dumped into a file due due to the multiprocess flag"
             )
 
@@ -144,8 +137,8 @@ class RecordAuxiliary(DTAuxiliaryInterface):
         :return: True if successful
         """
 
-        log.internal_info("Create auxiliary instance")
-        log.internal_info("Enable channel")
+        log.info("Create auxiliary instance")
+        log.info("Enable channel")
 
         try:
             if not self.is_active:
@@ -161,7 +154,7 @@ class RecordAuxiliary(DTAuxiliaryInterface):
 
         :return: always True
         """
-        log.internal_info("Delete auxiliary instance")
+        log.info("Delete auxiliary instance")
 
         self.stop_recording()
 
@@ -183,7 +176,7 @@ class RecordAuxiliary(DTAuxiliaryInterface):
             log.exception("Error encountered while channel creation.")
             return
 
-        log.internal_info(f"Received message/log at {self.log_folder_path}")
+        log.info(f"Received message/log at {self.log_folder_path}")
         self._data.write(self.LOG_HEADER)
         while not self.stop_receive_event.is_set():
             if sys.getsizeof(self.get_data()) > self.max_file_size:
@@ -235,7 +228,7 @@ class RecordAuxiliary(DTAuxiliaryInterface):
 
     def clear_buffer(self) -> None:
         """Clean the buffer that contain received messages."""
-        log.internal_info("Clearing buffer")
+        log.info("Clearing buffer")
         self._data = StringIOHandler(self.multiprocess)
         self.cursor = 0
 
@@ -247,9 +240,9 @@ class RecordAuxiliary(DTAuxiliaryInterface):
         ):
             self.stop_receive_event.set()
             self._receive_thread_or_process.join()
-            log.internal_info(f"{self.name} Recording has stopped")
+            log.info(f"{self.name} Recording has stopped")
         else:
-            log.internal_info("Already Stopped")
+            log.info("Already Stopped")
 
     def start_recording(self) -> None:
         """Clear buffer and start recording."""
@@ -270,9 +263,9 @@ class RecordAuxiliary(DTAuxiliaryInterface):
 
             self.clear_buffer()
             self._receive_thread_or_process.start()
-            log.internal_info(f"{self.name} Recording has started")
+            log.info(f"{self.name} Recording has started")
         else:
-            log.internal_info(f"{self.name} Already started")
+            log.info(f"{self.name} Already started")
 
     def is_log_empty(self) -> bool:
         """Check if logs are available in the log buffer.
@@ -295,7 +288,7 @@ class RecordAuxiliary(DTAuxiliaryInterface):
         """
         # check if there are data
         if (data is None and self.is_log_empty()) or data == "":
-            log.internal_warning("Log data is empty. skip dump to file.")
+            log.warning("Log data is empty. skip dump to file.")
             return False
 
         path_to_file = Path(self.log_folder_path) / filename
@@ -303,7 +296,7 @@ class RecordAuxiliary(DTAuxiliaryInterface):
 
         with open(path_to_file, mode) as f:
             f.write(data or self.get_data())
-            log.internal_info(f"Log written in {path_to_file}.")
+            log.info(f"Log written in {path_to_file}.")
 
         return True
 
@@ -500,15 +493,3 @@ class RecordAuxiliary(DTAuxiliaryInterface):
             time.sleep(interval)
         logging.info(f"Received message after {(time.time() - start):.1f}s")
         return True
-
-    def _run_command(self, cmd_message: Any, cmd_data: Optional[bytes]) -> None:
-        """Not used.
-
-        Simply respect the interface.
-        """
-
-    def _receive_message(self, timeout_in_s: float) -> None:
-        """Not used.
-
-        Simply respect the interface.
-        """

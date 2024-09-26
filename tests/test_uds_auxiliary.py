@@ -1,19 +1,21 @@
 ##########################################################################
 # Copyright (c) 2010-2022 Robert Bosch GmbH
-# This program and the accompanying materials are made available under the
-# terms of the Eclipse Public License 2.0 which is available at
-# http://www.eclipse.org/legal/epl-2.0.
 #
-# SPDX-License-Identifier: EPL-2.0
+# This source code is copyright protected and proprietary
+# to Robert Bosch GmbH. Only those rights that have been
+# explicitly granted to you by Robert Bosch GmbH in written
+# form may be exercised. All other rights remain with
+# Robert Bosch GmbH.
 ##########################################################################
 
 import logging
-from time import sleep
 from unittest import mock
 
 import pytest
+import threading
+import io
+import time
 
-from pykiso.lib.auxiliaries.udsaux.common import UDSCommands
 from pykiso.lib.auxiliaries.udsaux.common.uds_response import (
     NegativeResponseCode,
     UdsResponse,
@@ -30,6 +32,10 @@ class TestUdsAuxiliary:
     def uds_odx_aux_inst(self, mocker, ccpcan_inst, tmp_uds_config_ini):
 
         mocker.patch(
+            "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.run",
+            return_value=None,
+        )
+        mocker.patch(
             "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.create_instance",
             return_value=None,
         )
@@ -41,10 +47,7 @@ class TestUdsAuxiliary:
             "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.run_command",
             return_value=None,
         )
-        mocker.patch(
-            "pathlib.Path.exists",
-            return_value=True,
-        )
+
         TestUdsAuxiliary.uds_aux_instance_odx = UdsAuxiliary(
             ccpcan_inst, tmp_uds_config_ini, "odx"
         )
@@ -53,6 +56,10 @@ class TestUdsAuxiliary:
     @pytest.fixture(scope="function")
     def uds_odx_aux_inst_v(self, mocker, ccvector_inst, tmp_uds_config_ini):
 
+        mocker.patch(
+            "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.run",
+            return_value=None,
+        )
         mocker.patch(
             "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.create_instance",
             return_value=None,
@@ -73,6 +80,10 @@ class TestUdsAuxiliary:
     @pytest.fixture(scope="function")
     def uds_raw_aux_inst(self, mocker, ccpcan_inst, tmp_uds_config_ini):
         mocker.patch(
+            "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.run",
+            return_value=None,
+        )
+        mocker.patch(
             "pykiso.interfaces.thread_auxiliary.AuxiliaryInterface.create_instance",
             return_value=None,
         )
@@ -92,35 +103,21 @@ class TestUdsAuxiliary:
     def test_constructor_odx(self, uds_odx_aux_inst, tmp_uds_config_ini):
         assert uds_odx_aux_inst.is_proxy_capable
         assert str(uds_odx_aux_inst.odx_file_path) == "odx"
-        assert uds_odx_aux_inst.tp_waiting_time == 0.010
+        assert uds_odx_aux_inst.config_ini_path == tmp_uds_config_ini
 
     def test_constructor_raw(self, uds_raw_aux_inst, tmp_uds_config_ini):
         assert uds_raw_aux_inst.is_proxy_capable
         assert uds_raw_aux_inst.odx_file_path is None
-        assert uds_raw_aux_inst.tp_waiting_time == 0.010
+        assert uds_raw_aux_inst.config_ini_path == tmp_uds_config_ini
 
     def test_send_uds_raw(self, mock_uds_config, uds_odx_aux_inst):
         mock_uds_config.send.return_value = [0x50, 0x03]
         uds_odx_aux_inst.uds_config = mock_uds_config
         uds_odx_aux_inst.POSITIVE_RESPONSE_OFFSET = 0x40
-        uds_odx_aux_inst.tp_waiting_time = 0.020
 
         resp = uds_odx_aux_inst.send_uds_raw([0x10, 0x03])
 
-        mock_uds_config.send.assert_called_with(
-            [0x10, 0x03],
-            responseRequired=True,
-            tpWaitTime=uds_odx_aux_inst.tp_waiting_time,
-        )
         assert resp == [0x50, 0x03]
-
-    def test_send_uds_raw_no_response_required(self, mock_uds_config, uds_odx_aux_inst):
-        mock_uds_config.send.return_value = None
-        uds_odx_aux_inst.uds_config = mock_uds_config
-
-        resp = uds_odx_aux_inst.send_uds_raw([0x10, 0x03], response_required=False)
-
-        assert resp == True
 
     def test_send_uds_raw_resp_empty_list(self, mock_uds_config, uds_odx_aux_inst):
         mock_uds_config.send.return_value = []
@@ -324,49 +321,7 @@ class TestUdsAuxiliary:
         assert resp.is_negative is True
         assert resp.nrc == NegativeResponseCode.CONDITIONS_NOT_CORRECT
 
-    def test_tester_present_sender(self, uds_raw_aux_inst, mocker):
-        mocker.patch("time.sleep", return_value=None)
-        send_mock = mocker.patch.object(uds_raw_aux_inst, "send_uds_raw")
-
-        with uds_raw_aux_inst.tester_present_sender(1):
-            sleep(3)
-
-        send_mock.assert_called_with(
-            UDSCommands.TesterPresent.TESTER_PRESENT_NO_RESPONSE,
-            response_required=False,
-        )
-
-    def test_tester_present_sender_start_stop(self, mocker, uds_raw_aux_inst):
-        send_mock = mocker.patch.object(uds_raw_aux_inst, "send_uds_raw")
-        mocker.patch("time.sleep", return_value=None)
-
-        uds_raw_aux_inst.start_tester_present_sender(1)
-        uds_raw_aux_inst.stop_tester_present_sender()
-
-        send_mock.assert_called_with(
-            UDSCommands.TesterPresent.TESTER_PRESENT_NO_RESPONSE,
-            response_required=False,
-        )
-
-    def test_tester_present_sender_stop_before_start(
-        self, mocker, uds_raw_aux_inst, caplog
-    ):
-        send_mock = mocker.patch.object(uds_raw_aux_inst, "send_uds_raw")
-        mocker.patch("time.sleep", return_value=None)
-
-        uds_raw_aux_inst.stop_tester_present_sender()
-        with caplog.at_level(logging.ERROR):
-            assert (
-                "Tester present sender should be started before it can be stopped"
-                in caplog.text
-            )
-
-    def test_delete_aux_instance(self, mocker, uds_raw_aux_inst):
-        mocker.patch.object(uds_raw_aux_inst, "send_uds_raw")
-        mocker.patch("time.sleep", return_value=None)
-
-        assert uds_raw_aux_inst.is_tester_present is None
-        uds_raw_aux_inst.start_tester_present_sender(0.5)
-        assert uds_raw_aux_inst.is_tester_present is not None
-        assert uds_raw_aux_inst._delete_auxiliary_instance() is True
-        assert uds_raw_aux_inst.is_tester_present is None
+    def test_tester_present_sender(self, uds_raw_aux_inst) :
+        with uds_raw_aux_inst.tester_present_sender(1) :
+            time.sleep(3.5)
+        assert uds_raw_aux_inst.send_uds_raw.call_count==3

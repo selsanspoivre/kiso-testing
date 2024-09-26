@@ -46,14 +46,12 @@ class LibSCPI:
         # Check if the instrument in use is registered
         if instrument in REGISTERED_INSTRUMENTS:
             self.instrument = instrument
-            log.internal_info(
+            log.info(
                 f"{instrument} is a registered instrument: using registered commands"
             )
         else:
             self.instrument = "DEFAULT"
-            log.internal_info(
-                "Working with unknown instrument: using default commands."
-            )
+            log.info("Working with unknown instrument: using default commands.")
 
     def _send_scpi_command(
         self,
@@ -120,7 +118,7 @@ class LibSCPI:
         # Check if the command is available for the instrument in use
         if command == "NOT_AVAILABLE":
             # do not send any request
-            log.internal_warning(
+            log.warning(
                 f"Command {cmd_type}:{cmd_tag} aborted as not available for instrument {self.instrument}"
             )
             return "COMMAND_NOT_AVAILABLE", validation

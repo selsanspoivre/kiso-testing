@@ -11,6 +11,7 @@ Included Auxiliaries
     acroname_auxiliary
     communication_auxiliary
     dut_auxiliary
+    example_test_auxiliary
     instrument_control_auxiliary
     mp_proxy_auxiliary
     proxy_auxiliary

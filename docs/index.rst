@@ -7,14 +7,14 @@ Welcome to pykiso's documentation!
     :maxdepth: 2
     :caption: Contents:
 
-    whats_new/index
-    getting_started/index
     introduction/integration_test
-    advanced_usage/index
-    modules_usage/index
+    getting_started/index
+    whats_new/index
     api
-    tools/index
-    robot_framework/index
+    examples/index
+    advanced_features/index
+    remote_test/remote_test
+    robot_framework/robot_framework
 
 Indices and tables
 ==================

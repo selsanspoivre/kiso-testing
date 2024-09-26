@@ -25,9 +25,7 @@ from .dynamic_loader import DynamicImportLinker
 
 
 class ConfigRegistry:
-    """Register auxiliaries with connectors to provide systemwide import
-    statements.
-    """
+    """Register auxiliaries with connectors to provide systemwide import statements."""
 
     _linker = None
 
@@ -55,9 +53,7 @@ class ConfigRegistry:
 
     @classmethod
     def delete_aux_con(cls) -> None:
-        """Deregister the import hooks, close all running threads,
-        delete all instances.
-        """
+        """deregister the import hooks, close all running threads, delete all instances."""
         ConfigRegistry._linker.uninstall()
 
     @classmethod
@@ -83,16 +79,6 @@ class ConfigRegistry:
             for alias, inst in all_auxes.items()
             if isinstance(inst, aux_type)
         }
-
-    @classmethod
-    def get_aux_by_alias(cls, alias: str) -> Any:
-        """Return the associated auxiliary instance to the given alias.
-
-        :param alias: auxiliary's alias
-
-        :return: auxiliary instance created by the dymanic loader
-        """
-        return ConfigRegistry._linker._aux_cache.get_instance(alias)
 
     @classmethod
     def get_aux_config(cls, name: str) -> dict:

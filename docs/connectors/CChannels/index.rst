@@ -15,7 +15,6 @@ Included Connectors
     cc_proxy
     cc_raw_loopback
     cc_rtt_segger
-    cc_serial
     cc_socket_can
     cc_tcp_ip
     cc_uart

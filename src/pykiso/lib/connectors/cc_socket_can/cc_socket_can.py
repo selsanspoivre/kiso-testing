@@ -23,7 +23,7 @@ import logging
 import platform
 import time
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 import can
 import can.bus
@@ -118,7 +118,7 @@ class CCSocketCan(CChannel):
             )
 
         if self.enable_brs and not self.is_fd:
-            log.internal_warning(
+            log.warning(
                 "Bitrate switch will have no effect because option is_fd is set to false."
             )
 
@@ -137,7 +137,7 @@ class CCSocketCan(CChannel):
         )
 
         if self.logging_activated:
-            log.internal_info(f"Logging path for socketCAN set to {self.log_path} ")
+            log.info(f"Logging path for socketCAN set to {self.log_path} ")
             self.logger = SocketCan2Trc(self.channel, str(self.log_path))
             self.logger.start()
 
@@ -150,7 +150,9 @@ class CCSocketCan(CChannel):
             del self.logger
             self.logger = None
 
-    def _cc_send(self, msg: MessageType, raw: bool = False, **kwargs) -> None:
+    def _cc_send(
+        self, msg: MessageType, remote_id: int = None, raw: bool = False
+    ) -> None:
         """Send a CAN message at the configured id.
 
         If remote_id parameter is not given take configured ones, in addition if
@@ -163,7 +165,6 @@ class CCSocketCan(CChannel):
 
         """
         _data = msg
-        remote_id = kwargs.get("remote_id")
 
         if remote_id is None:
             remote_id = self.remote_id
@@ -180,11 +181,11 @@ class CCSocketCan(CChannel):
         )
         self.bus.send(can_msg)
 
-        log.internal_debug(f"{self} sent CAN Message: {can_msg}, data: {_data}")
+        log.debug(f"{self} sent CAN Message: {can_msg}, data: {_data}")
 
     def _cc_receive(
         self, timeout: float = 0.0001, raw: bool = False
-    ) -> Dict[str, Union[MessageType, int]]:
+    ) -> Union[Message, bytes, None]:
         """Receive a can message using configured filters.
 
         If raw parameter is set to True return received message as it is (bytes)
@@ -203,17 +204,17 @@ class CCSocketCan(CChannel):
                 timestamp = received_msg.timestamp
                 if not raw:
                     payload = Message.parse_packet(payload)
-                log.internal_debug(
+                log.debug(
                     "received CAN Message: {}, {}, {}".format(
                         frame_id, payload, timestamp
                     )
                 )
-                return {"msg": payload, "remote_id": frame_id}
+                return payload, frame_id
             else:
-                return {"msg": None}
+                return None, None
         except can.CanError as can_error:
-            log.internal_debug(f"encountered can error: {can_error}")
-            return {"msg": None}
+            log.debug(f"encountered can error: {can_error}")
+            return None, None
         except Exception:
             log.exception(f"encountered error while receiving message via {self}")
-            return {"msg": None}
+            return None, None

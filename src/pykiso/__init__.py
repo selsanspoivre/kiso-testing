@@ -19,31 +19,14 @@ pykiso - extensible framework for (embedded) integration testing.
 
 """
 
-try:
-    from importlib import metadata
-except ImportError:  # for Python<3.8
-    import importlib_metadata as metadata
+import pkg_resources
 
-# get version from package metadata to automatically set the version dunder
-__version__ = metadata.version(__name__)
+__version__ = pkg_resources.get_distribution(__package__).version
 
-from . import (
-    auxiliary,
-    cli,
-    config_parser,
-    connector,
-    logging_initializer,
-    message,
-    types,
-)
+
+from . import auxiliary, cli, config_parser, connector, message, types
 from .auxiliary import AuxiliaryCommon
 from .connector import CChannel, Flasher
-from .exceptions import (
-    AuxiliaryCreationError,
-    PykisoError,
-    TestCollectionError,
-)
-from .interfaces.dt_auxiliary import DTAuxiliaryInterface
 from .interfaces.mp_auxiliary import MpAuxiliaryInterface
 from .interfaces.simple_auxiliary import SimpleAuxiliaryInterface
 from .interfaces.thread_auxiliary import AuxiliaryInterface
